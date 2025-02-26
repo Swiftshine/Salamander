@@ -1,0 +1,9 @@
+[package]
+name = "salamander"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.96"
+ppc750cl = "0.3.2"
+ppc750cl-asm = "0.3.2"
