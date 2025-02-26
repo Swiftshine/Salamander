@@ -11,7 +11,7 @@ fn find_arg_count(mnemonic: &str) -> Option<usize> {
     None
 }
 
-fn parse_argument(mut token: &str) -> Option<i16> {
+fn token_to_numeric_argument(mut token: &str) -> Option<i16> {
     // general purpose registers
     if let Some(num) = token.strip_prefix('r') {
         return num.parse::<i16>().ok(); // GPRs (rX -> X)
@@ -47,6 +47,61 @@ fn parse_argument(mut token: &str) -> Option<i16> {
     None
 }
 
+fn token_to_argument(mut token: &str) -> Option<asm::Argument> {
+    // strip parens
+    if token.contains('(') {
+        token = token.strip_prefix('(')?;
+    }
+
+    if token.contains(')') {
+        token = token.strip_suffix(')')?;
+    }
+
+    // parse
+    let arg_value = token_to_numeric_argument(token)?;
+    let arg_value = u16::from_ne_bytes(arg_value.to_ne_bytes()) as u32;
+    
+    Some(asm::Argument::Unsigned(arg_value))
+}
+
+fn token_to_arguments(token: &str) -> Option<(asm::Argument, asm::Argument)> {
+    if let Some((offset, register)) = offset_to_tokens(token) {
+        let offset_arg = token_to_argument(&offset)?;
+        let register_arg = token_to_argument(&register)?;
+
+        Some((offset_arg, register_arg))
+    } else {
+        None
+    }
+}
+
+fn is_offset(token: &str) -> Option<bool> {
+    // check if there are parentheses
+    let left_found = token.contains('(');
+    // specify "ends with" because it can be malformed by adding characters after it
+    let right_found = token.ends_with(')');
+
+    if left_found && right_found {
+        // valid parens
+        Some(true)
+    } else if !(left_found && right_found) {
+        // no parens
+        Some(false)
+    } else {
+        // invalid parens
+        None
+    }
+}
+
+fn offset_to_tokens(token: &str) -> Option<(String, String)> {
+    let left_paren_pos = token.find('(')?;
+
+    let offset = token[0..left_paren_pos].to_string();
+    let register = token[left_paren_pos..].to_string();
+
+    Some((offset, register))
+}
+
 fn instr_to_code(line: &str) -> Option<u32> {
     // split into individual tokens
     let mut tokens = line.split([' ', ',']).collect::<Vec<&str>>();
@@ -54,7 +109,6 @@ fn instr_to_code(line: &str) -> Option<u32> {
     // get rid of empty lines
     tokens.retain(|t| !t.is_empty());
 
-    
     // must contain valid tokens
     if tokens.is_empty() {
         return None;
@@ -73,27 +127,57 @@ fn instr_to_code(line: &str) -> Option<u32> {
     }
 
     let arg_count = find_arg_count(mnemonic)?;
+    let found_arg_count = tokens.len() + {
+        let mut additional = 0;
+        for token in tokens.iter() {
+            if let Some(b) = is_offset(token) {
+                if b {
+                    additional += 1;
+                }
+            }
+        }
+        additional
+    };
 
     // tokens now only contains args
-    if tokens.len() != arg_count {
+    if found_arg_count != arg_count {
         return None;
     }
 
     // parse arguments
-    let mut args = [asm::Argument::None; 5];
+    let mut passed_args = [asm::Argument::None; 5];
     let mut used_args = 0;
 
-    for token in tokens.iter() {
+    for token in tokens {
         // get the numeric value of the argument
         // i.e. r3 -> 3, f1 -> 1, 0x10 -> 0x10
 
-        let arg_value = parse_argument(token)?;
-        let arg_value = u16::from_ne_bytes(arg_value.to_ne_bytes()) as u32;
-        args[used_args] = asm::Argument::Unsigned(arg_value);
+        if let Some(b) = is_offset(token)  {
+            if b {
+                // is an offset
+                println!("is an offset");
+
+                let args = token_to_arguments(token)?;
+                passed_args[used_args] = args.0;
+                passed_args[used_args + 1] = args.1;
+                used_args += 2;
+                continue;
+            }
+        }
+
+        // is not an offset
+
+        let arg = token_to_argument(token)?;
+        passed_args[used_args] = arg;
         used_args += 1;
+        
+
+        if used_args > 5 {
+            return None;
+        }
     }
 
-    if let Ok(assembled) = asm::assemble(mnemonic, &args) {
+    if let Ok(assembled) = asm::assemble(mnemonic, &passed_args) {
         return Some(assembled);
     }
     
@@ -101,11 +185,20 @@ fn instr_to_code(line: &str) -> Option<u32> {
 }
 
 fn main() {
-    let instruction = "blr";
+    let instruction = "lwz r3, 0x4(r3)";
     let code = instr_to_code(instruction).unwrap_or_else(|| 0);
     println!("instruction: {instruction}, code: {:X}", code);
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn line_to_code() {
+        assert_eq!(0x80630004, instr_to_code("lwz r3, 0x4(r3)").unwrap());
+    }
+}
 const EXPECTED_ARG_COUNTS: [(&str, usize); 296] = [
     ("add", 3),
     ("addc", 3),
