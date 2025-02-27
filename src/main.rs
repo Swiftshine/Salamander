@@ -1,5 +1,7 @@
 // use ppc750cl as disasm;
 use ppc750cl_asm as asm;
+use std::fs;
+use anyhow::Result;
 
 fn find_arg_count(mnemonic: &str) -> Option<usize> {
     for (m, c) in EXPECTED_ARG_COUNTS {
@@ -155,8 +157,6 @@ fn instr_to_code(line: &str) -> Option<u32> {
         if let Some(b) = is_offset(token)  {
             if b {
                 // is an offset
-                println!("is an offset");
-
                 let args = token_to_arguments(token)?;
                 passed_args[used_args] = args.0;
                 passed_args[used_args + 1] = args.1;
@@ -166,13 +166,11 @@ fn instr_to_code(line: &str) -> Option<u32> {
         }
 
         // is not an offset
-
         let arg = token_to_argument(token)?;
         passed_args[used_args] = arg;
         used_args += 1;
         
-
-        if used_args > 5 {
+        if used_args >= 5 {
             return None;
         }
     }
@@ -184,10 +182,16 @@ fn instr_to_code(line: &str) -> Option<u32> {
     None
 }
 
-fn main() {
-    let instruction = "lwz r3, 0x4(r3)";
-    let code = instr_to_code(instruction).unwrap_or_else(|| 0);
-    println!("instruction: {instruction}, code: {:X}", code);
+fn main() -> Result<()> {
+    let contents = fs::read_to_string("scratch/lines.txt")?;
+    let lines = contents.lines().collect::<Vec<&str>>();
+
+    for line in lines {
+        let code = instr_to_code(line).unwrap_or_else(|| 0);
+        println!("instr: {line}, code: 0x{:X}", code);
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -197,6 +201,7 @@ mod tests {
     #[test]
     fn line_to_code() {
         assert_eq!(0x80630004, instr_to_code("lwz r3, 0x4(r3)").unwrap());
+        assert_eq!(0x4E800020, instr_to_code("blr").unwrap());
     }
 }
 const EXPECTED_ARG_COUNTS: [(&str, usize); 296] = [
