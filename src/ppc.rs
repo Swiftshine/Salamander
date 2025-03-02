@@ -1,4 +1,4 @@
-// use ppc750cl as disasm;
+use ppc750cl as disasm;
 use ppc750cl_asm as asm;
 use thiserror::Error;
 
@@ -484,6 +484,10 @@ pub fn instruction_to_code(instr: &str) -> Result<u32, LineConversionError> {
     }
 }
 
+/// Converts binary PowerPC into a written line.
+pub fn code_to_instruction(code: u32) -> String {
+    disasm::Ins::new(code).simplified().to_string()
+}
 
 #[cfg(test)]
 mod tests {
@@ -532,7 +536,7 @@ mod tests {
     }
 
     #[test]
-    fn check_code() -> Result<(), LineConversionError> {
+    fn check_instruction_to_code() -> Result<(), LineConversionError> {
         assert_eq!(
             0x80630004,
             instruction_to_code("lwz r3, 0x4(r3)")?
@@ -544,5 +548,11 @@ mod tests {
         );
 
         Ok(())
+    }
+
+    #[test]
+    fn check_code_to_instruction() {
+        assert!("blr".eq(&code_to_instruction(0x4E800020)));
+        assert!("lwz r3, 0x4(r3)".eq(&code_to_instruction(0x80630004)));
     }
 }

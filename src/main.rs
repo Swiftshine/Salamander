@@ -1,8 +1,25 @@
 mod ppc;
+mod gecko;
 
-fn main() -> Result<(), ppc::LineConversionError> {
-    let code = ppc::instruction_to_code("stw r5, 0x0(r3)")?;
-    println!("{:X}", code);
+use std::fs;
+use anyhow::Result;
+use gecko::gecko_code_to_assembly;
 
+fn main() -> Result<()> {
+    let gecko_code = fs::read_to_string("sample_codes/sample_code_2.txt")?;
+
+    println!("Gecko Code:\n{gecko_code}\n");
+
+    let words = gecko_code.split([' ', '\n']).collect::<Vec<&str>>();
+    
+    let mut values: Vec<u32> = Vec::new();
+
+    for word in words {
+        values.push(u32::from_str_radix(word, 16)?);
+    }
+
+    let assembly = gecko_code_to_assembly(&values)?;
+
+    println!("{assembly}");
     Ok(())
 }
