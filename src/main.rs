@@ -3,10 +3,10 @@ mod gecko;
 
 use std::fs;
 use anyhow::Result;
-use gecko::gecko_code_to_assembly;
+use gecko::convert_from_gecko_code_values;
 
 fn main() -> Result<()> {
-    let gecko_code = fs::read_to_string("sample_codes/sample_code_2.txt")?;
+    let gecko_code = fs::read_to_string("sample_codes/sample_code_3.txt")?;
 
     println!("Gecko Code:\n{gecko_code}\n");
 
@@ -18,7 +18,7 @@ fn main() -> Result<()> {
         values.push(u32::from_str_radix(word, 16)?);
     }
 
-    let assembly = gecko_code_to_assembly(&values)?;
+    let assembly = convert_from_gecko_code_values(&values)?;
 
     println!("{assembly}");
     Ok(())

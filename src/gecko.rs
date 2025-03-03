@@ -39,6 +39,20 @@ use crate::ppc;
 //     }
 // }
 
+/* Util */
+fn get_and_seek(cursor: &mut Cursor<&[u32]>) -> u32 {
+    let pos = cursor.position();
+    let value = cursor.get_ref()[pos as usize];
+    cursor.set_position(pos + 1);
+    value
+}
+
+fn get_code_address(cursor: &mut Cursor<&[u32]>) -> u32 {
+    let address = get_and_seek(cursor) & 0x00FFFFFF;
+    let final_address = 0x80000000 | address;
+    final_address
+}
+
 #[derive(Error, Debug)]
 pub enum GeckoCodeConversionError {
     #[error("Invalid type")]
@@ -51,66 +65,100 @@ pub enum GeckoCodeConversionError {
     Empty
 }
 
-pub fn gecko_code_to_assembly(gecko_code: &[u32]) -> Result<String, GeckoCodeConversionError> {
-    // todo - a gecko code can have more than one code type,
-    // which means we should process codes until the end of the string
+pub fn convert_from_gecko_code_values(gecko_code: &[u32]) -> Result<String, GeckoCodeConversionError> {
+    let code_length = gecko_code.len();
 
+    // make sure the code is valid length-wise
 
-    if gecko_code.len() == 0 {
+    if code_length  == 0 {
         return Err(GeckoCodeConversionError::Empty);
-    }
-    
-    if gecko_code.len() % 2 != 0 {
+    } else if code_length % 2 != 0 {
         return Err(GeckoCodeConversionError::Malformed);
     }
 
-    // detect type
-    // this is the first byte in the sequence
 
-    let code_type_byte = ((gecko_code[0] & 0xFF000000) >> 0x18) as u8;
 
-    let assembly  = match code_type_byte {
-        // Insert Assembly
-        0xC2 => {
-            process_c2(gecko_code)
+    // todo - a gecko code can have more than one code type,
+    // which means we should process codes until the end of the string
+
+    let mut cursor = Cursor::new(gecko_code);
+
+    let mut result = String::new();
+
+    let mut current_cursor_position = 0;
+    while current_cursor_position < gecko_code.len() {
+        
+        // detect code type -- this is the first byte in the code sequence
+        let byte = ((gecko_code[current_cursor_position] & 0xFF000000) >> 0x18) as u8;
+
+        match byte {
+            // 32-bit RAM Write
+            0x04 => {
+                result += &(from_04(&mut cursor)? + "\n");
+            }
+            
+            // Insert Assembly
+            0xC2 => {
+                result += &(from_c2(&mut cursor)? + "\n");
+            }
+
+            // Invalid/Unsupported
+            _ => {
+                return Err(GeckoCodeConversionError::InvalidType)
+            }
         }
 
-        // Invalid/Unspported
-        _ => {
-            return Err(GeckoCodeConversionError::InvalidType)
-        }
-    };
+        current_cursor_position = cursor.position() as usize;
+    }
 
-    assembly
+    Ok(result)
 }
+
 
 /* Code Types */
 
+/// # 0x04: 32-bit RAM write
+/// The specified `value` will **constantly** be
+/// written to `address`.
+/// ## Parameters
+/// `cursor`: The `Cursor` for the gecko code.
+/// ## Returns
+/// `Result<String, GeckoCodeConversionError>`
+fn from_04(cursor: &mut Cursor<&[u32]>) -> Result<String, GeckoCodeConversionError> {
+    let mut result = "// Constant 32-bit RAM write\n".to_string();
+    result += &format!("// Target address: 0x{:X}\n", get_code_address(cursor));
+    result += &format!("// Value: 0x{:X}\n", get_and_seek(cursor));
+    Ok(result)
+}
 
-/// 0xC2: Insert Assembly
+/// # 0xC2: Insert Assembly
 /// A branch to a subroutine containing `code` will
 /// be placed at `address`. The code must end with
 /// `0x00000000`. If an additional line must be used
-/// to do this, use a `nop`, (`0x60000000`).
-fn process_c2(gecko_code: &[u32]) -> Result<String, GeckoCodeConversionError> {
-    let code_length = gecko_code.len();
-
-    let mut cursor = Cursor::new(gecko_code);
-    let mut result = String::new();
+/// to do this, use a `nop` (`0x60000000`). The value
+/// stored in the second value of the first line is
+/// the total number of *subsequent* lines. **The Gecko
+/// Code handler will automatically add a branch back to
+/// `address + 0x4`.**
+/// ## Parameters
+/// `cursor`: The `Cursor` for the gecko code.
+/// ## Returns
+/// `Result<String, GeckoCodeConversionError>`
+fn from_c2(cursor: &mut Cursor<&[u32]>) -> Result<String, GeckoCodeConversionError> {
+    let mut result = "// - Insert Assembly -\n".to_string();
 
     // find address
-    let address = gecko_code[0] & 0x00FFFFFF;
-    let final_address = 0x80000000 | address;
-    result += "// Target address: 0x";
-    result += &format!("{:X}\n\n", final_address);
+    let address = get_code_address(cursor);
+    result += &format!("// Target address: 0x{:X}\n\n", address);
 
-    let _num_lines = gecko_code[1];
-    cursor.set_position(cursor.position() + 2);
+    let _num_lines = get_and_seek(cursor);
 
-    // lines
-    while (cursor.position() as usize) < code_length {
-        let left_code = cursor.get_ref()[cursor.position() as usize];
-        let right_code = cursor.get_ref()[cursor.position() as usize + 1];
+    let cursor_len = cursor.get_ref().len();
+
+    // process assembly
+    while (cursor.position() as usize) < cursor_len {
+        let left_code = get_and_seek(cursor);
+        let right_code = get_and_seek(cursor);
 
         // check if this is the end of the code
         if left_code == 0x60000000 {
@@ -125,10 +173,7 @@ fn process_c2(gecko_code: &[u32]) -> Result<String, GeckoCodeConversionError> {
         }
 
         result += &(ppc::code_to_instruction(right_code) + "\n");
-
-        cursor.set_position(cursor.position() + 2);
     }
-
 
     Ok(result)
 }
