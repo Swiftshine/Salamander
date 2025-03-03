@@ -3,42 +3,6 @@ use std::io::Cursor;
 
 use crate::ppc;
 
-// This is NOT a conclusive list of every type of gecko code.
-// Instead, it consists of commonly-used types.
-// Feel free to request that a code type be implemented.
-// pub enum GeckoCodeType {
-//     // U8RAMWrite {
-//     //     address: u32,
-//     //     count: u16,
-//     //     value: u8,
-//     // },
-
-//     // U16RAMWrite {
-//     //     address: u32,
-//     //     count: u16,
-//     //     value: u16
-//     // },
-
-//     // U32RAMWrite {
-//     //     address: u32,
-//     //     value: u32
-//     // },
-
-//     // StringWrite {
-//     //     address: u32,
-//     //     value: String
-//     // },
-
-//     /// A branch to a subroutine containing `code` will
-//     /// be placed at `address`. The code must end with
-//     /// `0x00000000`. If an additional line must be used
-//     /// to do this, use a `nop`, (`0x60000000`).
-//     InsertAssembly {
-//         address: u32,
-//         code: Vec<u32>
-//     }
-// }
-
 /* Util */
 #[derive(Error, Debug)]
 pub enum GeckoCodeConversionError {
@@ -77,6 +41,10 @@ fn get_code_address(cursor: &mut Cursor<&[u32]>, larger_address: bool) -> u32 {
     }
 }
 
+
+// This is NOT a conclusive list of every type of gecko code.
+// Instead, it consists of commonly-used types.
+// Feel free to request that a code type be implemented.
 
 
 pub fn convert_from_gecko_code_values(gecko_code: &[u32]) -> Result<String, GeckoCodeConversionError> {
@@ -186,7 +154,7 @@ fn from_02(cursor: &mut Cursor<&[u32]>, larger_address: bool) -> Result<String, 
 
     let count = (temp & 0xFFFF0000) >> 0x10;
     let value = (temp & 0x0000FFFF) as u16;
-    result += &format!("// Range: 0x{:08X} to 0x{:08X}\n", address, address + count + 1);
+    result += &format!("// Range: 0x{:08X} to 0x{:04X}\n", address, address + count + 1);
     result += &format!("// Value: 0x{:08X}", value);
     
     Ok(result)
