@@ -142,7 +142,7 @@ fn from_04(cursor: &mut Cursor<&[u32]>, larger_address: bool) -> Result<String, 
     Ok(result)
 }
 
-/// # 0x80: Set Gecko Register to...
+/// # 0x80: Set Gecko Register to
 /// ## Parameters
 /// `cursor`: The `Cursor` for the gecko code.
 /// `larger_address`: Indicates if the given address is >= `0x01000000`.
