@@ -155,7 +155,7 @@ fn from_80(cursor: &mut Cursor<&[u32]>) -> Result<String, GeckoCodeConversionErr
     Ok(format!("// - Set Gecko Register {register} to 0x{:X}\n", value))
 }
 
-/// # 0x82: Load into Gecko Register...
+/// # 0x82: Load into Gecko Register
 /// ## Parameters
 /// `cursor`: The `Cursor` for the gecko code.
 /// `larger_address`: Indicates if the given address is >= `0x01000000`.
