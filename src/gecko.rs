@@ -45,7 +45,7 @@ pub enum GeckoCodeConversionError {
     // #[error("Unimplemented")]
     // Unimplemented,
 
-    #[error("Invalid gecko code type. Line number: {line_number}, found value: 0x{:X}", value)]
+    #[error("Invalid gecko code type. Line number: {line_number}, found value: 0x{:08X}", value)]
     InvalidType {
         line_number: usize,
         value: u32
@@ -186,8 +186,8 @@ fn from_02(cursor: &mut Cursor<&[u32]>, larger_address: bool) -> Result<String, 
 
     let count = (temp & 0xFFFF0000) >> 0x10;
     let value = (temp & 0x0000FFFF) as u16;
-    result += &format!("// Range: 0x{:X} to 0x{:X}\n", address, address + count + 1);
-    result += &format!("// Value: 0x{:X}", value);
+    result += &format!("// Range: 0x{:08X} to 0x{:08X}\n", address, address + count + 1);
+    result += &format!("// Value: 0x{:08X}", value);
     
     Ok(result)
 }
@@ -202,8 +202,8 @@ fn from_02(cursor: &mut Cursor<&[u32]>, larger_address: bool) -> Result<String, 
 /// `Result<String, GeckoCodeConversionError>`
 fn from_04(cursor: &mut Cursor<&[u32]>, larger_address: bool) -> Result<String, GeckoCodeConversionError> {
     let mut result = "// - Constant 32-bit RAM Write -\n".to_string();
-    result += &format!("// Target address: 0x{:X}\n", get_code_address(cursor, larger_address));
-    result += &format!("// Value: 0x{:X}", get_and_seek(cursor));
+    result += &format!("// Target address: 0x{:08X}\n", get_code_address(cursor, larger_address));
+    result += &format!("// Value: 0x{:08X}", get_and_seek(cursor));
     Ok(result)
 }
 
@@ -222,7 +222,7 @@ fn from_04(cursor: &mut Cursor<&[u32]>, larger_address: bool) -> Result<String, 
 /// `Result<String, GeckoCodeConversionError>`
 fn from_06(cursor: &mut Cursor<&[u32]>, larger_address: bool) -> Result<String, GeckoCodeConversionError> {
     let mut result = "// - String RAM Write - \n".to_string();
-    result += &format!("// Target address: 0x{:X}\n", get_code_address(cursor, larger_address));
+    result += &format!("// Target address: 0x{:08X}\n", get_code_address(cursor, larger_address));
     let num_bytes = get_and_seek(cursor);
 
     // determine the number of values to skip
@@ -282,9 +282,9 @@ fn from_06(cursor: &mut Cursor<&[u32]>, larger_address: bool) -> Result<String, 
 
             // check if this is the last one
             if index == raw_bytes.len() - 1 {
-                result += &format!("0x{:X}]", byte);
+                result += &format!("0x{:08X}]", byte);
             } else {
-                result += &format!("0x{:X}, ", byte);
+                result += &format!("0x{:08X}, ", byte);
             }
         }
     }
@@ -302,7 +302,7 @@ fn from_80(cursor: &mut Cursor<&[u32]>) -> Result<String, GeckoCodeConversionErr
     let register = get_and_seek(cursor) & 0x000000FF;
     let value = get_and_seek(cursor);
 
-    Ok(format!("// - Set Gecko Register {register} to 0x{:X} -", value))
+    Ok(format!("// - Set Gecko Register {register} to 0x{:08X} -", value))
 }
 
 /// # 0x82: Load into Gecko Register
@@ -314,7 +314,7 @@ fn from_82(cursor: &mut Cursor<&[u32]>) -> Result<String, GeckoCodeConversionErr
     let register = get_and_seek(cursor) & 0x000000FF;
     let value = get_and_seek(cursor);
 
-    Ok(format!("// - Load value 0x{:X} into register {register}", value))
+    Ok(format!("// - Load value 0x{:08X} into register {register}", value))
 }
 
 /// # 0xC2: Insert Assembly
@@ -336,7 +336,7 @@ fn from_c2(cursor: &mut Cursor<&[u32]>, larger_address: bool) -> Result<String, 
 
     // find address
     let address = get_code_address(cursor, larger_address);
-    result += &format!("// Target address: 0x{:X}\n\n", address);
+    result += &format!("// Target address: 0x{:08X}\n\n", address);
 
     let _num_lines = get_and_seek(cursor);
 
@@ -374,7 +374,7 @@ fn from_c2(cursor: &mut Cursor<&[u32]>, larger_address: bool) -> Result<String, 
 /// `Result<String, GeckoCodeConversionError>`
 fn from_c6(cursor: &mut Cursor<&[u32]>, larger_address: bool) -> Result<String, GeckoCodeConversionError> {
     let mut result = "// - Create a Branch -\n".to_string();
-    result += &format!("// Target address: 0x{:X}\n", get_code_address(cursor, larger_address));
-    result += &format!("// Branch to: 0x{:X}\n", get_and_seek(cursor));
+    result += &format!("// Target address: 0x{:08X}\n", get_code_address(cursor, larger_address));
+    result += &format!("// Branch to: 0x{:08X}\n", get_and_seek(cursor));
     Ok(result)
 }
