@@ -40,6 +40,24 @@ use crate::ppc;
 // }
 
 /* Util */
+#[derive(Error, Debug)]
+pub enum GeckoCodeConversionError {
+    // #[error("Unimplemented")]
+    // Unimplemented,
+
+    #[error("Invalid gecko code type. Line number: {line_number}, found value: 0x{:X}", value)]
+    InvalidType {
+        line_number: usize,
+        value: u32
+    },
+
+    #[error("Malformed gecko code")]
+    Malformed,
+
+    #[error("Empty gecko code")]
+    Empty
+}
+
 fn get_and_seek(cursor: &mut Cursor<&[u32]>) -> u32 {
     let pos = cursor.position();
     let value = cursor.get_ref()[pos as usize];
@@ -59,17 +77,7 @@ fn get_code_address(cursor: &mut Cursor<&[u32]>, larger_address: bool) -> u32 {
     }
 }
 
-#[derive(Error, Debug)]
-pub enum GeckoCodeConversionError {
-    #[error("Invalid gecko code type")]
-    InvalidType,
 
-    #[error("Malformed gecko code")]
-    Malformed,
-
-    #[error("Empty gecko code")]
-    Empty
-}
 
 pub fn convert_from_gecko_code_values(gecko_code: &[u32]) -> Result<String, GeckoCodeConversionError> {
     let code_length = gecko_code.len();
@@ -88,14 +96,30 @@ pub fn convert_from_gecko_code_values(gecko_code: &[u32]) -> Result<String, Geck
 
     let mut current_cursor_position = 0;
     while current_cursor_position < gecko_code.len() {
-        
+        let current_value = gecko_code[current_cursor_position];
+
         // detect code type -- this is the first byte in the code sequence
-        let byte = ((gecko_code[current_cursor_position] & 0xFF000000) >> 0x18) as u8;
+        let byte = ((current_value & 0xFF000000) >> 0x18) as u8;
 
         match byte {
+            // // 8-bit RAM Write
+            // 0x00 | 0x01 => {
+
+            // }
+
+            // 16-bit RAM Write & Fill
+            0x02 | 0x03 => {
+                result += &from_02(&mut cursor, byte % 2 != 0)?;
+            }
+            
             // 32-bit RAM Write
-            0x04 | 0x5 => {
-                result += &(from_04(&mut cursor, byte % 2 != 0)? + "\n");
+            0x04 | 0x05 => {
+                result += &from_04(&mut cursor, byte % 2 != 0)?;
+            }
+
+            // String RAM Write
+            0x06 => {
+                result += &from_06(&mut cursor, byte % 2 != 0)?;
             }
             
             // Set Gecko Register to
@@ -107,17 +131,29 @@ pub fn convert_from_gecko_code_values(gecko_code: &[u32]) -> Result<String, Geck
             0x82 =>  {
                 result += &from_82(&mut cursor)?;
             }
+
             // Insert Assembly
             0xC2 | 0xC3 => {
-                result += &(from_c2(&mut cursor, byte % 2 != 0)? + "\n");
+                result += &from_c2(&mut cursor, byte % 2 != 0)?;
+            }
+
+            // Create a Branch
+            0xC6 | 0xC7 => {
+                result += &from_c6(&mut cursor, byte % 2 != 0)?;
             }
 
             // Invalid/Unsupported
             _ => {
-                return Err(GeckoCodeConversionError::InvalidType)
+                let err = GeckoCodeConversionError::InvalidType {
+                    line_number: (current_cursor_position / 2) + 1,
+                    value: current_value
+                };
+                
+                return Err(err);
             }
         }
 
+        result += "\n---\n";
         current_cursor_position = cursor.position() as usize;
     }
 
@@ -127,7 +163,36 @@ pub fn convert_from_gecko_code_values(gecko_code: &[u32]) -> Result<String, Geck
 
 /* Code Types */
 
-/// # 0x04: 32-bit RAM write
+/// # 0x00: 8-bit RAM Write & Fill
+/// The `value` will **constantly** fill the range `address`
+/// to `address + count + 1`.
+// fn from_00(cursor: &mut Cursor<&[u32]>, larger_address: bool) -> Result<String, GeckoCodeConversionError> {
+//     // let mut result = "// Constant 8-bit RAM "
+//     Ok(String::new())
+// }
+
+/// # 0x02: 16-bit RAM Write & Fill
+/// The `value` will **constantly** fill the range
+/// `address` to `address + count + 1`.
+/// ## Parameters
+/// `cursor`: The `Cursor` for the gecko code.
+/// `larger_address`: Indicates if the given address is >= `0x01000000`.
+/// ## Returns
+/// `Result<String, GeckoCodeConversionError>`
+fn from_02(cursor: &mut Cursor<&[u32]>, larger_address: bool) -> Result<String, GeckoCodeConversionError> {
+    let mut result = "// - Constant 16-bit RAM Fill -\n".to_string();
+    let address = get_code_address(cursor, larger_address);
+    let temp = get_and_seek(cursor);
+
+    let count = (temp & 0xFFFF0000) >> 0x10;
+    let value = (temp & 0x0000FFFF) as u16;
+    result += &format!("// Range: 0x{:X} to 0x{:X}\n", address, address + count + 1);
+    result += &format!("// Value: 0x{:X}", value);
+    
+    Ok(result)
+}
+
+/// # 0x04: 32-bit RAM Write
 /// The specified `value` will **constantly** be
 /// written to `address`.
 /// ## Parameters
@@ -136,36 +201,120 @@ pub fn convert_from_gecko_code_values(gecko_code: &[u32]) -> Result<String, Geck
 /// ## Returns
 /// `Result<String, GeckoCodeConversionError>`
 fn from_04(cursor: &mut Cursor<&[u32]>, larger_address: bool) -> Result<String, GeckoCodeConversionError> {
-    let mut result = "// - Constant 32-bit RAM write -\n".to_string();
+    let mut result = "// - Constant 32-bit RAM Write -\n".to_string();
     result += &format!("// Target address: 0x{:X}\n", get_code_address(cursor, larger_address));
-    result += &format!("// Value: 0x{:X}\n", get_and_seek(cursor));
+    result += &format!("// Value: 0x{:X}", get_and_seek(cursor));
+    Ok(result)
+}
+
+/// # 0x06: String RAM Write
+/// The following `count` bytes will be written to `address`.
+/// ### Note
+/// The name of the code type is "String" RAM Write, but
+/// there is no null-termination check to ensure that the
+/// contents are actually a valid string. In other words,
+/// this code type can simply be used to write raw bytes,
+/// regardless of content.
+/// ## Parameters
+/// `cursor`: The `Cursor` for the gecko code.
+/// `larger_address`: Indicates if the given address is >= `0x01000000`.
+/// ## Returns
+/// `Result<String, GeckoCodeConversionError>`
+fn from_06(cursor: &mut Cursor<&[u32]>, larger_address: bool) -> Result<String, GeckoCodeConversionError> {
+    let mut result = "// - String RAM Write - \n".to_string();
+    result += &format!("// Target address: 0x{:X}\n", get_code_address(cursor, larger_address));
+    let num_bytes = get_and_seek(cursor);
+
+    // determine the number of values to skip
+    let num_values = (num_bytes as usize).next_multiple_of(4) / 4;
+
+    // read raw bytes
+    let mut raw_bytes: Vec<u8> = Vec::new();
+
+    for _ in 0..num_values {
+        let value = get_and_seek(cursor);
+
+        // the bytes must be in big endian before adding
+        // them to the list
+
+        let bytes = value.to_be_bytes();
+        raw_bytes.extend(bytes);
+    }
+
+    // discard extraneous values
+    raw_bytes.resize(num_bytes as usize, 0);
+
+    // determine if the bytes can be output as a string
+    // or if they should be output as-is
+    let mut is_string = false;
+
+    if let Some(index) = raw_bytes
+        .iter()
+        .position(|byte| *byte == 0)
+    {
+        if !(index < raw_bytes.len() - 1) {
+            // the only 0 is at the end; this can
+            // be considered a *candidate* for 
+            // a valid string
+            is_string = true;
+        }
+    }
+
+    // determine if the string was valid and printable
+    let mut printed_string = false;
+
+    if is_string {
+        // try to convert it to a string
+        if let Ok(string) = String::from_utf8(raw_bytes.to_vec()) {
+            printed_string = true;
+            result += &format!("// String contents: \"{string}\"\n");
+        }
+    }
+
+    if !is_string || !printed_string {
+        // not a string or the string wasn't printable
+        // print out bytes instead
+        
+        result += "// Byte contents: [";
+
+        
+        for (index, byte) in raw_bytes.iter().enumerate() {
+
+            // check if this is the last one
+            if index == raw_bytes.len() - 1 {
+                result += &format!("0x{:X}]", byte);
+            } else {
+                result += &format!("0x{:X}, ", byte);
+            }
+        }
+    }
+    
+    
     Ok(result)
 }
 
 /// # 0x80: Set Gecko Register to
 /// ## Parameters
 /// `cursor`: The `Cursor` for the gecko code.
-/// `larger_address`: Indicates if the given address is >= `0x01000000`.
 /// ## Returns
 /// `Result<String, GeckoCodeConversionError>`
 fn from_80(cursor: &mut Cursor<&[u32]>) -> Result<String, GeckoCodeConversionError> {
     let register = get_and_seek(cursor) & 0x000000FF;
     let value = get_and_seek(cursor);
 
-    Ok(format!("// - Set Gecko Register {register} to 0x{:X}\n", value))
+    Ok(format!("// - Set Gecko Register {register} to 0x{:X} -", value))
 }
 
 /// # 0x82: Load into Gecko Register
 /// ## Parameters
 /// `cursor`: The `Cursor` for the gecko code.
-/// `larger_address`: Indicates if the given address is >= `0x01000000`.
 /// ## Returns
 /// `Result<String, GeckoCodeConversionError>`
 fn from_82(cursor: &mut Cursor<&[u32]>) -> Result<String, GeckoCodeConversionError> {
     let register = get_and_seek(cursor) & 0x000000FF;
     let value = get_and_seek(cursor);
 
-    Ok(format!("// - Load value 0x{:X} into register {register}\n", value))
+    Ok(format!("// - Load value 0x{:X} into register {register}", value))
 }
 
 /// # 0xC2: Insert Assembly
@@ -213,5 +362,19 @@ fn from_c2(cursor: &mut Cursor<&[u32]>, larger_address: bool) -> Result<String, 
         result += &(ppc::code_to_instruction(right_code) + "\n");
     }
 
+    Ok(result)
+}
+
+/// # 0xC6: Create a Branch
+/// A branch to `target` is placed at `address`.
+/// ## Parameters
+/// `cursor`: The `Cursor` for the gecko code.
+/// `larger_address`: Indicates if the given address is >= `0x01000000`.
+/// ## Returns
+/// `Result<String, GeckoCodeConversionError>`
+fn from_c6(cursor: &mut Cursor<&[u32]>, larger_address: bool) -> Result<String, GeckoCodeConversionError> {
+    let mut result = "// - Create a Branch -\n".to_string();
+    result += &format!("// Target address: 0x{:X}\n", get_code_address(cursor, larger_address));
+    result += &format!("// Branch to: 0x{:X}\n", get_and_seek(cursor));
     Ok(result)
 }
