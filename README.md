@@ -13,3 +13,4 @@ Gecko code converter
 
 ## Documentation
 - [Gecko Code Documentation](https://wiigeckocodes.github.io/codetypedocumentation.html)
+    - A markdown version can be found [here](https://github.com/NicholasMoser/Naruto-GNT-Modding/blob/main/general/docs/guides/gecko_codetype_documentation.md)
