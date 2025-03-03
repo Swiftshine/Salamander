@@ -153,7 +153,7 @@ pub fn convert_from_gecko_code_values(gecko_code: &[u32]) -> Result<String, Geck
             }
         }
 
-        result += "\n---\n";
+        result += "\n// ---\n";
         current_cursor_position = cursor.position() as usize;
     }
 
