@@ -486,7 +486,13 @@ pub fn instruction_to_code(instr: &str) -> Result<u32, LineConversionError> {
 
 /// Converts binary PowerPC into a written line.
 pub fn code_to_instruction(code: u32) -> String {
-    disasm::Ins::new(code).simplified().to_string()
+    let result =  disasm::Ins::new(code).simplified().to_string();
+
+    if result != "<illegal>" {
+        result
+    } else {
+        format!("<illegal; found: 0x{:08X}>", code)
+    }
 }
 
 #[cfg(test)]
