@@ -47,10 +47,16 @@ fn get_and_seek(cursor: &mut Cursor<&[u32]>) -> u32 {
     value
 }
 
-fn get_code_address(cursor: &mut Cursor<&[u32]>) -> u32 {
+fn get_code_address(cursor: &mut Cursor<&[u32]>, larger_address: bool) -> u32 {
     let address = get_and_seek(cursor) & 0x00FFFFFF;
+
     let final_address = 0x80000000 | address;
-    final_address
+    
+    if larger_address {
+        final_address + 0x01000000
+    } else {
+        final_address
+    }
 }
 
 #[derive(Error, Debug)]
@@ -70,16 +76,11 @@ pub fn convert_from_gecko_code_values(gecko_code: &[u32]) -> Result<String, Geck
 
     // make sure the code is valid length-wise
 
-    if code_length  == 0 {
+    if code_length == 0 {
         return Err(GeckoCodeConversionError::Empty);
     } else if code_length % 2 != 0 {
         return Err(GeckoCodeConversionError::Malformed);
     }
-
-
-
-    // todo - a gecko code can have more than one code type,
-    // which means we should process codes until the end of the string
 
     let mut cursor = Cursor::new(gecko_code);
 
@@ -93,13 +94,13 @@ pub fn convert_from_gecko_code_values(gecko_code: &[u32]) -> Result<String, Geck
 
         match byte {
             // 32-bit RAM Write
-            0x04 => {
-                result += &(from_04(&mut cursor)? + "\n");
+            0x04 | 0x5 => {
+                result += &(from_04(&mut cursor, byte % 2 != 0)? + "\n");
             }
             
             // Insert Assembly
-            0xC2 => {
-                result += &(from_c2(&mut cursor)? + "\n");
+            0xC2 | 0xC3 => {
+                result += &(from_c2(&mut cursor, byte % 2 != 0)? + "\n");
             }
 
             // Invalid/Unsupported
@@ -122,11 +123,12 @@ pub fn convert_from_gecko_code_values(gecko_code: &[u32]) -> Result<String, Geck
 /// written to `address`.
 /// ## Parameters
 /// `cursor`: The `Cursor` for the gecko code.
+/// `larger_address`: Indicates if the given address is >= `0x01000000`.
 /// ## Returns
 /// `Result<String, GeckoCodeConversionError>`
-fn from_04(cursor: &mut Cursor<&[u32]>) -> Result<String, GeckoCodeConversionError> {
+fn from_04(cursor: &mut Cursor<&[u32]>, larger_address: bool) -> Result<String, GeckoCodeConversionError> {
     let mut result = "// Constant 32-bit RAM write\n".to_string();
-    result += &format!("// Target address: 0x{:X}\n", get_code_address(cursor));
+    result += &format!("// Target address: 0x{:X}\n", get_code_address(cursor, larger_address));
     result += &format!("// Value: 0x{:X}\n", get_and_seek(cursor));
     Ok(result)
 }
@@ -142,13 +144,14 @@ fn from_04(cursor: &mut Cursor<&[u32]>) -> Result<String, GeckoCodeConversionErr
 /// `address + 0x4`.**
 /// ## Parameters
 /// `cursor`: The `Cursor` for the gecko code.
+/// `larger_address`: Indicates if the given address is >= `0x01000000`.
 /// ## Returns
 /// `Result<String, GeckoCodeConversionError>`
-fn from_c2(cursor: &mut Cursor<&[u32]>) -> Result<String, GeckoCodeConversionError> {
+fn from_c2(cursor: &mut Cursor<&[u32]>, larger_address: bool) -> Result<String, GeckoCodeConversionError> {
     let mut result = "// - Insert Assembly -\n".to_string();
 
     // find address
-    let address = get_code_address(cursor);
+    let address = get_code_address(cursor, larger_address);
     result += &format!("// Target address: 0x{:X}\n\n", address);
 
     let _num_lines = get_and_seek(cursor);
