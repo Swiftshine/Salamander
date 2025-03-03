@@ -8,10 +8,9 @@ use gecko::convert_from_gecko_code_values;
 fn main() -> Result<()> {
     let gecko_code = fs::read_to_string("sample_codes/sample_code_3.txt")?;
 
-    println!("Gecko Code:\n{gecko_code}\n");
+    let mut words = gecko_code.split([' ', '\n', '\r']).collect::<Vec<&str>>();
+    words.retain(|w| !w.is_empty());
 
-    let words = gecko_code.split([' ', '\n']).collect::<Vec<&str>>();
-    
     let mut values: Vec<u32> = Vec::new();
 
     for word in words {

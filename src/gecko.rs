@@ -61,13 +61,13 @@ fn get_code_address(cursor: &mut Cursor<&[u32]>, larger_address: bool) -> u32 {
 
 #[derive(Error, Debug)]
 pub enum GeckoCodeConversionError {
-    #[error("Invalid type")]
+    #[error("Invalid gecko code type")]
     InvalidType,
 
-    #[error("Malformed code")]
+    #[error("Malformed gecko code")]
     Malformed,
 
-    #[error("Empty code")]
+    #[error("Empty gecko code")]
     Empty
 }
 
@@ -98,6 +98,15 @@ pub fn convert_from_gecko_code_values(gecko_code: &[u32]) -> Result<String, Geck
                 result += &(from_04(&mut cursor, byte % 2 != 0)? + "\n");
             }
             
+            // Set Gecko Register to
+            0x80 => {
+                result += &from_80(&mut cursor)?;
+            }
+
+            // Load into Gecko Register
+            0x82 =>  {
+                result += &from_82(&mut cursor)?;
+            }
             // Insert Assembly
             0xC2 | 0xC3 => {
                 result += &(from_c2(&mut cursor, byte % 2 != 0)? + "\n");
@@ -127,10 +136,36 @@ pub fn convert_from_gecko_code_values(gecko_code: &[u32]) -> Result<String, Geck
 /// ## Returns
 /// `Result<String, GeckoCodeConversionError>`
 fn from_04(cursor: &mut Cursor<&[u32]>, larger_address: bool) -> Result<String, GeckoCodeConversionError> {
-    let mut result = "// Constant 32-bit RAM write\n".to_string();
+    let mut result = "// - Constant 32-bit RAM write -\n".to_string();
     result += &format!("// Target address: 0x{:X}\n", get_code_address(cursor, larger_address));
     result += &format!("// Value: 0x{:X}\n", get_and_seek(cursor));
     Ok(result)
+}
+
+/// # 0x80: Set Gecko Register to...
+/// ## Parameters
+/// `cursor`: The `Cursor` for the gecko code.
+/// `larger_address`: Indicates if the given address is >= `0x01000000`.
+/// ## Returns
+/// `Result<String, GeckoCodeConversionError>`
+fn from_80(cursor: &mut Cursor<&[u32]>) -> Result<String, GeckoCodeConversionError> {
+    let register = get_and_seek(cursor) & 0x000000FF;
+    let value = get_and_seek(cursor);
+
+    Ok(format!("// - Set Gecko Register {register} to 0x{:X}\n", value))
+}
+
+/// # 0x82: Load into Gecko Register...
+/// ## Parameters
+/// `cursor`: The `Cursor` for the gecko code.
+/// `larger_address`: Indicates if the given address is >= `0x01000000`.
+/// ## Returns
+/// `Result<String, GeckoCodeConversionError>`
+fn from_82(cursor: &mut Cursor<&[u32]>) -> Result<String, GeckoCodeConversionError> {
+    let register = get_and_seek(cursor) & 0x000000FF;
+    let value = get_and_seek(cursor);
+
+    Ok(format!("// - Load value 0x{:X} into register {register}\n", value))
 }
 
 /// # 0xC2: Insert Assembly
