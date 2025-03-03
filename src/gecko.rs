@@ -154,8 +154,8 @@ fn from_02(cursor: &mut Cursor<&[u32]>, larger_address: bool) -> Result<String, 
 
     let count = (temp & 0xFFFF0000) >> 0x10;
     let value = (temp & 0x0000FFFF) as u16;
-    result += &format!("// Range: 0x{:08X} to 0x{:04X}\n", address, address + count + 1);
-    result += &format!("// Value: 0x{:08X}", value);
+    result += &format!("// Range: 0x{:08X} to 0x{:08X}\n", address, address + count + 1);
+    result += &format!("// Value: 0x{:04X}", value);
     
     Ok(result)
 }
