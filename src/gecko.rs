@@ -282,9 +282,9 @@ fn from_06(cursor: &mut Cursor<&[u32]>, larger_address: bool) -> Result<String, 
 
             // check if this is the last one
             if index == raw_bytes.len() - 1 {
-                result += &format!("0x{:08X}]", byte);
+                result += &format!("0x{:02X}]", byte);
             } else {
-                result += &format!("0x{:08X}, ", byte);
+                result += &format!("0x{:02X}, ", byte);
             }
         }
     }
