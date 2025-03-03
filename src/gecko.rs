@@ -355,7 +355,7 @@ fn from_c2(cursor: &mut Cursor<&[u32]>, larger_address: bool) -> Result<String, 
         result += &(ppc::code_to_instruction(left_code) + "\n");
 
         // check if this is the end of the code
-        if right_code == 0 {
+        if right_code == 0 || right_code == 0x60000000 {
             break;
         }
 
