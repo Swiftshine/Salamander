@@ -121,7 +121,7 @@ pub fn convert_from_gecko_code_values(gecko_code: &[u32]) -> Result<String, Geck
             }
         }
 
-        result += "\n// ---\n";
+        result += "\n\n// ---\n\n";
         current_cursor_position = cursor.position() as usize;
     }
 
@@ -243,10 +243,17 @@ fn from_06(cursor: &mut Cursor<&[u32]>, larger_address: bool) -> Result<String, 
         // not a string or the string wasn't printable
         // print out bytes instead
         
-        result += "// Byte contents: [";
+        result += "// Byte contents:\n// [";
 
+        // the number of bytes that will be printed on one line
+        // before moving to the next
+        let num_printed_bytes = 8;
         
         for (index, byte) in raw_bytes.iter().enumerate() {
+
+            if index != 0 && index % num_printed_bytes == 0 {
+                result += "\n// ";
+            }
 
             // check if this is the last one
             if index == raw_bytes.len() - 1 {
@@ -317,7 +324,7 @@ fn from_c2(cursor: &mut Cursor<&[u32]>, larger_address: bool) -> Result<String, 
 
         // gecko codes are written by all sorts of people
         // and as a result don't always follow the "rules"
-        //set in place by the documentation
+        // set in place by the documentation
 
         // by that standard, many C2 codes are "malformed", but many
         // of these codes work regardless. sometimes these codes include
