@@ -315,15 +315,27 @@ fn from_c2(cursor: &mut Cursor<&[u32]>, larger_address: bool) -> Result<String, 
         let left_code = get_and_seek(cursor);
         let right_code = get_and_seek(cursor);
 
+        // gecko codes are written by all sorts of people
+        // and as a result don't always follow the "rules"
+        //set in place by the documentation
+
+        // by that standard, many C2 codes are "malformed", but many
+        // of these codes work regardless. sometimes these codes include
+        // invalid instructions, but they'll never be hit due to
+        // some branch being placed before they can be executed
+
+        // so, there are differing conditions in which a C2 code would end,
+        // and all of them need to be checked
+
         // check if this is the end of the code
-        if left_code == 0x60000000 {
+        if left_code == 0x60000000 && right_code == 0 {
             break;
         }
 
         result += &(ppc::code_to_instruction(left_code) + "\n");
 
         // check if this is the end of the code
-        if right_code == 0 || right_code == 0x60000000 {
+        if right_code == 0x60000000 {
             break;
         }
 
