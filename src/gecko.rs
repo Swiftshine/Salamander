@@ -19,7 +19,12 @@ pub enum GeckoCodeConversionError {
     Malformed,
 
     #[error("Empty gecko code")]
-    Empty
+    Empty,
+
+    #[error("Failed to parse gecko code. {reason}")]
+    ParseError {
+        reason: String
+    }
 }
 
 fn get_and_seek(cursor: &mut Cursor<&[u32]>) -> u32 {
@@ -98,6 +103,16 @@ pub fn convert_from_gecko_code_values(gecko_code: &[u32]) -> Result<String, Geck
             // Load into Gecko Register
             0x82 =>  {
                 result += &from_82(&mut cursor)?;
+            }
+
+            // Store Gecko Register at
+            0x84 | 0x94 => {
+                result += &from_84_94(&mut cursor)?;
+            }
+
+            // Execute Assembly
+            0xC0 => {
+                result += &from_c0(&mut cursor)?;
             }
 
             // Insert Assembly
@@ -268,6 +283,19 @@ fn from_06(cursor: &mut Cursor<&[u32]>, larger_address: bool) -> Result<String, 
     Ok(result)
 }
 
+// /// # 0x42: Set Base Address to
+// /// ## Parameters
+// /// `cursor`: The `Cursor` for the gecko code.
+// /// ## Returns
+// /// `Result<String, GeckoCodeConversionError>`
+// fn from_42_52(cursor: &mut Cursor<&[u32]>) -> Result<String, GeckoCodeConversionError> {
+//     let code = get_and_seek(cursor);
+//     let address = get_and_seek(cursor);
+
+//     Ok(String::new())
+// }
+
+
 /// # 0x80: Set Gecko Register to
 /// ## Parameters
 /// `cursor`: The `Cursor` for the gecko code.
@@ -277,7 +305,7 @@ fn from_80(cursor: &mut Cursor<&[u32]>) -> Result<String, GeckoCodeConversionErr
     let register = get_and_seek(cursor) & 0x000000FF;
     let value = get_and_seek(cursor);
 
-    Ok(format!("// - Set Gecko Register {register} to 0x{:08X} -", value))
+    Ok(format!("// gr{register} = 0x{:08X}", value))
 }
 
 /// # 0x82: Load into Gecko Register
@@ -292,6 +320,97 @@ fn from_82(cursor: &mut Cursor<&[u32]>) -> Result<String, GeckoCodeConversionErr
     Ok(format!("// - Load value 0x{:08X} into register {register}", value))
 }
 
+/// # 0x84, 0x94: Store Gecko Register at
+/// ## Parameters
+/// `cursor`: The `Cursor` for the gecko code.
+/// ## Returns
+/// `Result<String, GeckoCodeConversionError>`
+fn from_84_94(cursor: &mut Cursor<&[u32]>) -> Result<String, GeckoCodeConversionError> {
+    // determine subtype
+    let code = get_and_seek(cursor);
+    let subtype = ((code & 0xFF000000) >> 0x18) as u8;    
+
+    let value_size_value = ((code & 0x00F00000) >> 0x18) as u8;
+    
+    let value_size = match value_size_value {
+        0 => 1,
+        1 => 2,
+        2 => 4,
+        _ => {
+            let err = GeckoCodeConversionError::ParseError {
+                reason: "Invalid T type. Must be 0 (1 byte), 1 (2 bytes), or 2 (4 bytes).".to_string()
+            };
+
+            return Err(err);
+        }
+    };
+
+    // the total number of consecutive written values is (num_additional_written_values + 1)
+
+    let num_additional_written_values = ((code & 0x0000FFF0) >> 0x4) as u16;
+    
+    let consecutive_written = num_additional_written_values + 1;
+
+    let register = (code & 0xF) as u8;
+    let address = get_and_seek(cursor);
+    
+    let result = match subtype {
+        0x84 => {
+            let sub_subtype = ((code & 0x000F0000) >> 0x14) as u8;
+
+            match sub_subtype {
+                0 => format!("// - Store register {register} starting at address 0x{:08X} with {consecutive_written} consecutive written {value_size}-byte values -", address),
+                1 => format!("// - Store register {register} starting at address 0x{:08X} + ba with {consecutive_written} consecutive written {value_size}-byte values -", address),
+
+                _ => unreachable!()
+            }
+
+        }
+
+        0x94 => format!("// - Store register {register} starting at address 0x{:08X} + po with {consecutive_written} consecutive written {value_size}-byte values -", address),
+        _ => unreachable!()
+    };
+
+    Ok(result)
+}
+
+/// # 0xC0: Execute Assembly
+/// The following `lines` of assembly will be executed.
+/// This MUST end with a `blr` instruction (`0x4E800020`).
+/// ## Parameters
+/// `cursor`: The `Cursor` for the gecko code.
+/// ## Returns
+/// `Result<String, GeckoCodeConversionError>`
+fn from_c0(cursor: &mut Cursor<&[u32]>) -> Result<String, GeckoCodeConversionError> {
+    let mut result = "// - Execute Assembly - \n".to_string();
+
+    let address = get_and_seek(cursor);
+    result += &format!("// Target address: 0x{:08X}\n\n", address);
+
+    let num_lines = get_and_seek(cursor);
+
+    for _ in 0..num_lines {
+        let left_code = get_and_seek(cursor);
+        let right_code = get_and_seek(cursor);
+
+        if left_code == 0x4E800020 {
+            result += "blr\n";
+            break;
+        }
+
+        result += &(ppc::code_to_instruction(left_code) + "\n");
+        
+        if right_code == 0x4E800020 {
+            result += "blr\n";
+            break;
+        }
+        
+        result += &(ppc::code_to_instruction(right_code) + "\n");
+    }
+
+
+    Ok(result)
+}
 /// # 0xC2: Insert Assembly
 /// A branch to a subroutine containing `code` will
 /// be placed at `address`. The code must end with
